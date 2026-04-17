@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 chcp 65001 >nul
 setlocal EnableDelayedExpansion
 
@@ -6,7 +6,7 @@ setlocal EnableDelayedExpansion
 :: Script de Actualización - RTMyG Administración
 :: Compatible con Windows 7 SP1+ (requiere PowerShell)
 :: El nombre del ejecutable se deriva del nombre de este .bat
-:: Con auto-actualización desde GitHub
+:: Opción 99 para actualizar este instalador
 :: ============================================================
 
 set "NOMBRE_EXE=%~n0.exe"
@@ -27,57 +27,6 @@ echo ╔════════════════════════
 echo ║       ACTUALIZADOR - RTMyG Administración                  ║
 echo ╚════════════════════════════════════════════════════════════╝
 echo.
-
-:: ─────────────────────────────────────────────────────────────
-:: AUTO-ACTUALIZACIÓN DEL SCRIPT
-:: ─────────────────────────────────────────────────────────────
-if "%~1"=="--skip-update" goto skip_self_update
-
-echo [0/5] Verificando actualizaciones del instalador...
-
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "$ProgressPreference = 'SilentlyContinue'; " ^
-    "try { " ^
-    "    $remoto = (Invoke-WebRequest -Uri '%UPDATER_URL%' -UseBasicParsing -TimeoutSec 10).Content; " ^
-    "    $local = Get-Content '%SCRIPT_PATH%' -Raw -Encoding UTF8; " ^
-    "    if ($remoto -ne $local) { " ^
-    "        [System.IO.File]::WriteAllText('%TEMP_UPDATER%', $remoto, [System.Text.Encoding]::UTF8); " ^
-    "        Write-Host 'ACTUALIZAR'; " ^
-    "    } else { " ^
-    "        Write-Host 'OK'; " ^
-    "    } " ^
-    "} catch { " ^
-    "    Write-Host 'ERROR'; " ^
-    "}" > "%TEMP%\update_check.txt"
-
-set /p UPDATE_STATUS=<"%TEMP%\update_check.txt"
-del "%TEMP%\update_check.txt" 2>nul
-
-if "%UPDATE_STATUS%"=="ACTUALIZAR" (
-    echo       √ Nueva versión del instalador encontrada
-    echo       Actualizando...
-    
-    :: Crear script de actualización diferida
-    echo @echo off > "%TEMP%\do_update.bat"
-    echo timeout /t 1 /nobreak ^>nul >> "%TEMP%\do_update.bat"
-    echo copy /Y "%TEMP_UPDATER%" "%SCRIPT_PATH%" ^>nul >> "%TEMP%\do_update.bat"
-    echo del "%TEMP_UPDATER%" 2^>nul >> "%TEMP%\do_update.bat"
-    echo start "" "%SCRIPT_PATH%" --skip-update >> "%TEMP%\do_update.bat"
-    echo del "%%~f0" >> "%TEMP%\do_update.bat"
-    
-    start "" "%TEMP%\do_update.bat"
-    exit /b 0
-)
-
-if "%UPDATE_STATUS%"=="OK" (
-    echo       √ Instalador actualizado
-)
-
-if "%UPDATE_STATUS%"=="ERROR" (
-    echo       ! No se pudo verificar actualizaciones, continuando...
-)
-
-:skip_self_update
 
 :: ─────────────────────────────────────────────────────────────
 :: PASO 1: Verificar que el proceso no esté corriendo
@@ -183,12 +132,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     "    Add-Content '%TEMP_MENU%' ('{0}|{1}|{2}' -f $i, $verText, $v.Url); " ^
     "    $i++; " ^
     "} " ^
+    "Write-Host '╠════════════════════════════════════════════════════════════╣'; " ^
+    "Write-Host '║  [99] Actualizar este instalador                           ║'; " ^
     "Write-Host '╚════════════════════════════════════════════════════════════╝';"
 
 echo.
 
 :seleccionar_version
-set /p "SELECCION=Selecciona una opción (1-10): "
+set /p "SELECCION=Selecciona una opción: "
 
 :: Validar que sea número
 echo %SELECCION%| findstr /r "^[0-9][0-9]*$" >nul
@@ -196,6 +147,9 @@ if errorlevel 1 (
     echo       ! Por favor ingresa un número válido
     goto seleccionar_version
 )
+
+:: Verificar si es opción 99 (actualizar instalador)
+if "%SELECCION%"=="99" goto actualizar_instalador
 
 :: Buscar la selección en el archivo temporal
 set "VERSION_ELEGIDA="
@@ -329,3 +283,62 @@ if exist "%NOMBRE_EXE%" (
 echo.
 pause
 exit /b 0
+
+:: ─────────────────────────────────────────────────────────────
+:: ACTUALIZAR INSTALADOR (Opción 99)
+:: ─────────────────────────────────────────────────────────────
+:actualizar_instalador
+echo.
+echo ╔════════════════════════════════════════════════════════════╗
+echo ║         ACTUALIZANDO INSTALADOR                            ║
+echo ╚════════════════════════════════════════════════════════════╝
+echo.
+echo Descargando nueva versión del instalador...
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "$ProgressPreference = 'SilentlyContinue'; " ^
+    "try { " ^
+    "    $content = (Invoke-WebRequest -Uri '%UPDATER_URL%' -UseBasicParsing -TimeoutSec 30).Content; " ^
+    "    [System.IO.File]::WriteAllText('%TEMP_UPDATER%', $content, [System.Text.Encoding]::UTF8); " ^
+    "    Write-Host 'OK'; " ^
+    "} catch { " ^
+    "    Write-Host 'ERROR'; " ^
+    "    Write-Host $_.Exception.Message; " ^
+    "}" > "%TEMP%\updater_result.txt"
+
+set /p UPDATER_RESULT=<"%TEMP%\updater_result.txt"
+del "%TEMP%\updater_result.txt" 2>nul
+
+if "%UPDATER_RESULT%"=="OK" (
+    echo       √ Descarga completada
+    echo       Aplicando actualización...
+    
+    :: Limpiar archivos temporales
+    del "%TEMP_VERSIONES%" 2>nul
+    del "%TEMP_MENU%" 2>nul
+    
+    :: Crear script de actualización diferida
+    echo @echo off > "%TEMP%\do_update.bat"
+    echo chcp 65001 ^>nul >> "%TEMP%\do_update.bat"
+    echo timeout /t 2 /nobreak ^>nul >> "%TEMP%\do_update.bat"
+    echo copy /Y "%TEMP_UPDATER%" "%SCRIPT_PATH%" ^>nul >> "%TEMP%\do_update.bat"
+    echo del "%TEMP_UPDATER%" 2^>nul >> "%TEMP%\do_update.bat"
+    echo echo. >> "%TEMP%\do_update.bat"
+    echo echo Instalador actualizado exitosamente. >> "%TEMP%\do_update.bat"
+    echo echo Reiniciando... >> "%TEMP%\do_update.bat"
+    echo timeout /t 2 /nobreak ^>nul >> "%TEMP%\do_update.bat"
+    echo start "" "%SCRIPT_PATH%" >> "%TEMP%\do_update.bat"
+    echo del "%%~f0" >> "%TEMP%\do_update.bat"
+    
+    start "" "%TEMP%\do_update.bat"
+    exit /b 0
+) else (
+    echo.
+    echo ╔════════════════════════════════════════════════════════════╗
+    echo ║  ERROR: No se pudo descargar la actualización.             ║
+    echo ║  Verifica tu conexión a internet.                          ║
+    echo ╚════════════════════════════════════════════════════════════╝
+    echo.
+    pause
+    exit /b 1
+)

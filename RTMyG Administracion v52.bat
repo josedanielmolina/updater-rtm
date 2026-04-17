@@ -6,13 +6,21 @@ setlocal EnableDelayedExpansion
 :: Script de Actualización - RTMyG Administración
 :: Compatible con Windows 7 SP1+ (requiere PowerShell)
 :: El nombre del ejecutable se deriva del nombre de este .bat
+:: Con auto-actualización desde GitHub
 :: ============================================================
 
 set "NOMBRE_EXE=%~n0.exe"
 set "VERSIONES_DOC_URL=https://docs.google.com/document/d/1TLs3j4jLR6U4Zv7dGlD12OZxjAmXypDjkfla_MtCi5M/export?format=txt"
+set "UPDATER_URL=https://raw.githubusercontent.com/josedanielmolina/updater-rtm/main/RTMyG%%20Administracion%%20v52.bat"
 set "CARPETA_BACKUP=backup"
 set "TEMP_VERSIONES=%TEMP%\versiones_%RANDOM%.txt"
 set "TEMP_MENU=%TEMP%\menu_%RANDOM%.txt"
+set "TEMP_UPDATER=%TEMP%\updater_nuevo_%RANDOM%.bat"
+
+:: Obtener directorio y ruta del script
+set "SCRIPT_DIR=%~dp0"
+set "SCRIPT_PATH=%~f0"
+cd /d "%SCRIPT_DIR%"
 
 echo.
 echo ╔════════════════════════════════════════════════════════════╗
@@ -20,9 +28,56 @@ echo ║       ACTUALIZADOR - RTMyG Administración                  ║
 echo ╚════════════════════════════════════════════════════════════╝
 echo.
 
-:: Obtener directorio del script
-set "SCRIPT_DIR=%~dp0"
-cd /d "%SCRIPT_DIR%"
+:: ─────────────────────────────────────────────────────────────
+:: AUTO-ACTUALIZACIÓN DEL SCRIPT
+:: ─────────────────────────────────────────────────────────────
+if "%~1"=="--skip-update" goto skip_self_update
+
+echo [0/5] Verificando actualizaciones del instalador...
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "$ProgressPreference = 'SilentlyContinue'; " ^
+    "try { " ^
+    "    $remoto = (Invoke-WebRequest -Uri '%UPDATER_URL%' -UseBasicParsing -TimeoutSec 10).Content; " ^
+    "    $local = Get-Content '%SCRIPT_PATH%' -Raw -Encoding UTF8; " ^
+    "    if ($remoto -ne $local) { " ^
+    "        [System.IO.File]::WriteAllText('%TEMP_UPDATER%', $remoto, [System.Text.Encoding]::UTF8); " ^
+    "        Write-Host 'ACTUALIZAR'; " ^
+    "    } else { " ^
+    "        Write-Host 'OK'; " ^
+    "    } " ^
+    "} catch { " ^
+    "    Write-Host 'ERROR'; " ^
+    "}" > "%TEMP%\update_check.txt"
+
+set /p UPDATE_STATUS=<"%TEMP%\update_check.txt"
+del "%TEMP%\update_check.txt" 2>nul
+
+if "%UPDATE_STATUS%"=="ACTUALIZAR" (
+    echo       √ Nueva versión del instalador encontrada
+    echo       Actualizando...
+    
+    :: Crear script de actualización diferida
+    echo @echo off > "%TEMP%\do_update.bat"
+    echo timeout /t 1 /nobreak ^>nul >> "%TEMP%\do_update.bat"
+    echo copy /Y "%TEMP_UPDATER%" "%SCRIPT_PATH%" ^>nul >> "%TEMP%\do_update.bat"
+    echo del "%TEMP_UPDATER%" 2^>nul >> "%TEMP%\do_update.bat"
+    echo start "" "%SCRIPT_PATH%" --skip-update >> "%TEMP%\do_update.bat"
+    echo del "%%~f0" >> "%TEMP%\do_update.bat"
+    
+    start "" "%TEMP%\do_update.bat"
+    exit /b 0
+)
+
+if "%UPDATE_STATUS%"=="OK" (
+    echo       √ Instalador actualizado
+)
+
+if "%UPDATE_STATUS%"=="ERROR" (
+    echo       ! No se pudo verificar actualizaciones, continuando...
+)
+
+:skip_self_update
 
 :: ─────────────────────────────────────────────────────────────
 :: PASO 1: Verificar que el proceso no esté corriendo

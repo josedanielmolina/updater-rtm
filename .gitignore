@@ -1,0 +1,9 @@
+# Excluir ejecutables
+*.exe
+
+# Excluir carpeta de backups
+backup/
+
+# Archivos temporales
+*.tmp
+*.log
